@@ -38,7 +38,7 @@ chmod +x near_node_auto_installer.sh
 Follow the interactive prompts to:
 1. Select the Network (Mainnet, Testnet, or Custom).
 2. Select the Node Type (Validator or RPC).
-3. Enter the `nearcore` version you wish to build (e.g., `2.4.0`).
+3. Enter the `nearcore` version you wish to build (e.g., `2.10.6`).
 4. Enter your Pool ID (e.g., `yourpool.poolv1.mainnet`).
 
 ## 🔧 Post-Installation Steps
