@@ -3,10 +3,10 @@
 set -e
 
 echo "============================================================"
-echo "      NEAR Validator Node - Multi-Network Installer"
+echo "      NEAR Node - Multi-Network & Type Installer"
 echo "============================================================"
 
-# 1. Network & RPC Selection
+# 1. Network & Node Type Selection
 echo "Select the Network Environment:"
 echo "1) mainnet (default)"
 echo "2) testnet"
@@ -28,18 +28,31 @@ case $NET_CHOICE in
         ;;
 esac
 
-echo ">>> Targeted Network: $NEAR_ENV"
-echo ">>> Using RPC: $RPC_URL"
+echo -e "\nSelect the Node Type:"
+echo "1) Validator Node (Low storage, tracked_shards: NoShards)"
+echo "2) RPC Node (Requires ~2TB NVMe, tracked_shards: AllShards)"
+read -p "Choose an option [1-2]: " TYPE_CHOICE
+
+if [ "$TYPE_CHOICE" == "2" ]; then
+    NODE_TYPE="RPC"
+    SHARD_CONFIG="AllShards"
+else
+    NODE_TYPE="Validator"
+    SHARD_CONFIG="NoShards"
+fi
+
+echo -e "\n>>> Targeted Network: $NEAR_ENV"
+echo ">>> Node Purpose: $NODE_TYPE"
+echo ">>> Using RPC for Sync: $RPC_URL"
 
 # 2. Collect user input
-# Added check to ensure version is not empty
 while [ -z "$NEAR_VERSION" ]; do
-    read -p "Enter the nearcore version (e.g., 2.4.0). Check: https://github.com/near/nearcore/releases: " NEAR_VERSION
+    read -p "Enter nearcore version (e.g., 2.4.0). Check: https://github.com/near/nearcore/releases: " NEAR_VERSION
 done
 
-read -p "Enter your Full Pool ID (e.g., lncvalidator.poolv1.near): " POOL_ID
+read -p "Enter your Full Pool ID (e.g., lncvalidator.poolv1.$NEAR_ENV): " POOL_ID
 
-echo -e "\nStarting installation for $NEAR_ENV... All data will be stored in $HOME\n"
+echo -e "\nStarting installation for $NEAR_ENV ($NODE_TYPE)... All data in $HOME\n"
 
 # 3. Update System and Install Dependencies
 echo ">>> Updating OS and installing dependencies..."
@@ -70,7 +83,6 @@ git checkout "$NEAR_VERSION"
 make release
 
 # 7. Set Environment Variables
-# Using sed to cleanly replace existing NEAR_ENV to avoid polluting .bashrc
 sed -i '/export NEAR_ENV=/d' "$HOME/.bashrc"
 echo "export NEAR_ENV=$NEAR_ENV" >> "$HOME/.bashrc"
 export NEAR_ENV=$NEAR_ENV
@@ -80,12 +92,11 @@ echo ">>> Initializing Node with Pool ID: $POOL_ID on $NEAR_ENV..."
 cd "$HOME/nearcore"
 target/release/neard init --chain-id="$NEAR_ENV" --account-id="$POOL_ID"
 
-# 9. Optimize config.json
-echo ">>> Setting gc_num_epochs_to_keep to 3..."
-jq '.gc_num_epochs_to_keep = 3' "$HOME/.near/config.json" > "$HOME/.near/config.tmp" && mv "$HOME/.near/config.tmp" "$HOME/.near/config.json"
+# 9. Optimize config.json based on Node Type
+echo ">>> Optimizing config.json (gc_num_epochs_to_keep=3, tracked_shards=$SHARD_CONFIG)..."
+jq --arg shards "$SHARD_CONFIG" '.gc_num_epochs_to_keep = 3 | .tracked_shards_config = $shards' "$HOME/.near/config.json" > "$HOME/.near/config.tmp" && mv "$HOME/.near/config.tmp" "$HOME/.near/config.json"
 
 # 10. Configure P2P State Sync Boot Nodes
-# Uses the selected RPC_URL to fetch fresh peers
 echo ">>> Updating boot nodes for $NEAR_ENV p2p state sync via $RPC_URL..."
 BOOT_NODES=$(curl -s -X POST "$RPC_URL" -H "Content-Type: application/json" -d '{ "jsonrpc": "2.0", "method": "network_info", "params": [], "id": "dontcare" }' | \
 jq -r '.result.active_peers as $list1 | .result.known_producers as $list2 | $list1[] as $active_peer | $list2[] | select(.peer_id == $active_peer.id) | "\(.peer_id)@\($active_peer.addr)"' | paste -sd "," -)
@@ -94,14 +105,14 @@ if [ ! -z "$BOOT_NODES" ]; then
     jq --arg newNodes "$BOOT_NODES" '.network.boot_nodes = $newNodes' "$HOME/.near/config.json" > "$HOME/.near/config.tmp" && mv "$HOME/.near/config.tmp" "$HOME/.near/config.json"
     echo ">>> Successfully updated boot nodes."
 else
-    echo ">>> WARNING: Could not fetch boot nodes from RPC. Using default config."
+    echo ">>> WARNING: Could not fetch boot nodes. Using default config."
 fi
 
 # 11. Create Systemd Service
 echo ">>> Setting up Systemd service..."
 sudo tee /etc/systemd/system/neard.service > /dev/null <<EOF
 [Unit]
-Description=NEARd Daemon Service ($NEAR_ENV)
+Description=NEARd Daemon Service ($NEAR_ENV - $NODE_TYPE)
 
 [Service]
 Type=simple
@@ -133,9 +144,9 @@ EOF
 sudo sysctl -p /etc/sysctl.d/local.conf || true
 
 echo "============================================================"
-echo " INSTALLATION COMPLETE! NETWORK: $NEAR_ENV"
+echo " INSTALLATION COMPLETE! NETWORK: $NEAR_ENV | TYPE: $NODE_TYPE"
 echo "============================================================"
-echo "1. Authorize Wallet: Run 'near login' (ensure you are using the correct network)."
+echo "1. Authorize Wallet: Run 'near login'."
 echo "2. Start Node: sudo systemctl start neard"
 echo "3. Monitor Logs: journalctl -n 100 -f -u neard | ccze -A"
 echo "4. Track node: https://t.me/nearvalidatorwatcherbot"
