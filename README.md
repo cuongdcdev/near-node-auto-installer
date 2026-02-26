@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-20.04%2B-orange?style=for-the-badge&logo=ubuntu)
 
-A powerful, interactive bash script designed to simplify the deployment of a **NEAR Protocol Validator Node** or **RPC Node**. This script automates the environment setup, dependency installation, and node configuration for **Mainnet**, **Testnet**, or **Custom Networks**.
+A interactive bash script designed to simplify the deployment of a **NEAR Protocol Validator Node** or **RPC Node**. This script automates the environment setup, dependency installation, and node configuration for **Mainnet**, **Testnet**, or **Custom Networks**.
 
 ## 🚀 Features
 
