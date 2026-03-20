@@ -6,6 +6,14 @@ echo "============================================================"
 echo "      NEAR Node - Multi-Network & Type Installer"
 echo "============================================================"
 
+# 0. OS Compatibility Check (Debian-based)
+if [ ! -f /etc/debian_version ]; then
+    echo ">>> WARNING: This script is heavily optimized for Debian-based OS (Ubuntu, Debian)."
+    echo ">>> Your OS might not support 'apt' package manager."
+    echo ">>> Press Ctrl+C to abort, or wait 5 seconds to proceed at your own risk..."
+    sleep 5
+fi
+
 # 1. Network & Node Type Selection
 echo "Select the Network Environment:"
 echo "1) mainnet (default)"
@@ -47,19 +55,46 @@ echo ">>> Using RPC for Sync: $RPC_URL"
 
 # 2. Collect user input
 while [ -z "$NEAR_VERSION" ]; do
-    read -p "Enter nearcore version (e.g., 2.4.0). Check: https://github.com/near/nearcore/releases: " NEAR_VERSION
+    read -p "Enter nearcore version (e.g., 2.10.7). Check: https://github.com/near/nearcore/releases: " NEAR_VERSION
 done
 
 read -p "Enter your Full Pool ID (e.g., lncvalidator.poolv1.$NEAR_ENV): " POOL_ID
 
 echo -e "\nStarting installation for $NEAR_ENV ($NODE_TYPE)... All data in $HOME\n"
 
-# 3. Update System and Install Dependencies
+# 3. Update System and Install Dependencies Gracefully
 echo ">>> Updating OS and installing dependencies..."
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y git binutils-dev libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev \
-cmake gcc g++ python3 protobuf-compiler libssl-dev pkg-config clang llvm \
-docker.io awscli tmux jq ccze rclone build-essential make curl wget unzip
+
+# Prevent apt from opening interactive prompts during upgrade
+export DEBIAN_FRONTEND=noninteractive
+
+# Temporarily disable set -e to handle package failures manually
+set +e 
+
+sudo -E apt-get update -y
+sudo -E apt-get upgrade -y
+
+PACKAGES="git binutils-dev libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev cmake gcc g++ python3 protobuf-compiler libssl-dev pkg-config clang llvm tmux jq ccze rclone build-essential make curl wget unzip"
+
+# Try bulk install first for speed
+echo ">>> Attempting bulk package installation..."
+if ! sudo -E apt-get install -y $PACKAGES; then
+    echo ">>> Bulk installation encountered errors (possibly 404 or missing packages)."
+    echo ">>> Switching to individual package installation to isolate the issue..."
+    
+    # Fallback to individual installation
+    for pkg in $PACKAGES; do
+        if ! sudo -E apt-get install -y "$pkg"; then
+            echo "------------------------------------------------------------"
+            echo " ⚠️ WARNING: Package '$pkg' failed to install (Not Found/Error)."
+            echo " This is usually non-critical. Skipping and continuing..."
+            echo "------------------------------------------------------------"
+        fi
+    done
+fi
+
+# Re-enable exit on error for the rest of the critical script
+set -e
 
 # 4. Install Rust (Non-interactive mode)
 echo ">>> Installing Rust..."
